@@ -35,6 +35,7 @@ class Board:
         
         # 2. Update Metadata
         self.white_to_move = (turn == 'w')
+        self.move_log = []
     
     def get_piece(self, square):
         return self.board[square[0]][square[1]]
