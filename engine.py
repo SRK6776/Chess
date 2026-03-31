@@ -235,9 +235,7 @@ class GameState:
         # Pawn promotion: read whose turn it is BEFORE flipping
         if move.is_promotion_move:
             is_white = self.white_to_move
-            choice = input("Promote to (Q, R, B, N): ").upper()
-            piece_map = {'Q': 'Q', 'R': 'R', 'B': 'B', 'N': 'N'}
-            promoted = piece_map.get(choice, 'Q')
+            promoted = getattr(move, 'promotion_choice', 'Q')
             self.board[move.end_row][move.end_col] = promoted if is_white else promoted.lower()
 
         self.white_to_move = not self.white_to_move
