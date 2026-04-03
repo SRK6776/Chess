@@ -45,7 +45,17 @@ def main():
                         (not game_state.white_to_move and not player_white)
         
         if is_human_turn:
-            move_str = input("Your move: ").strip().lower()
+            move_str = input("Your move (or 'z' to undo): ").strip().lower()
+            
+            if move_str in ['z', 'undo']:
+                if len(game_state.move_log) >= 2:
+                    game_state.undo_move() # Undo AI move
+                    game_state.undo_move() # Undo Human move
+                elif len(game_state.move_log) == 1: # If only one move made
+                    game_state.undo_move()
+                else:
+                    print("Nothing to undo.")
+                continue
             
             # Match user input against all legal moves
             user_move = None
