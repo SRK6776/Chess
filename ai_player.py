@@ -37,25 +37,219 @@ class AIPlayer:
         to_sq = move.end_col + (7 - move.end_row) * 8
         return from_sq * 64 + to_sq
 
+    # ─── Piece-Square Tables (from White's perspective) ─────
+    # These encode positional knowledge: where each piece WANTS to be.
+    # Values in centipawns (divided by 100 later). Positive = good square.
+    
+    PAWN_TABLE = [
+        [ 0,  0,  0,  0,  0,  0,  0,  0],
+        [50, 50, 50, 50, 50, 50, 50, 50],
+        [10, 10, 20, 30, 30, 20, 10, 10],
+        [ 5,  5, 10, 25, 25, 10,  5,  5],
+        [ 0,  0,  0, 20, 20,  0,  0,  0],
+        [ 5, -5,-10,  0,  0,-10, -5,  5],
+        [ 5, 10, 10,-20,-20, 10, 10,  5],
+        [ 0,  0,  0,  0,  0,  0,  0,  0]
+    ]
+    
+    KNIGHT_TABLE = [
+        [-50,-40,-30,-30,-30,-30,-40,-50],
+        [-40,-20,  0,  0,  0,  0,-20,-40],
+        [-30,  0, 10, 15, 15, 10,  0,-30],
+        [-30,  5, 15, 20, 20, 15,  5,-30],
+        [-30,  0, 15, 20, 20, 15,  0,-30],
+        [-30,  5, 10, 15, 15, 10,  5,-30],
+        [-40,-20,  0,  5,  5,  0,-20,-40],
+        [-50,-40,-30,-30,-30,-30,-40,-50]
+    ]
+    
+    BISHOP_TABLE = [
+        [-20,-10,-10,-10,-10,-10,-10,-20],
+        [-10,  0,  0,  0,  0,  0,  0,-10],
+        [-10,  0, 10, 10, 10, 10,  0,-10],
+        [-10,  5,  5, 10, 10,  5,  5,-10],
+        [-10,  0,  5, 10, 10,  5,  0,-10],
+        [-10, 10, 10, 10, 10, 10, 10,-10],
+        [-10,  5,  0,  0,  0,  0,  5,-10],
+        [-20,-10,-10,-10,-10,-10,-10,-20]
+    ]
+    
+    ROOK_TABLE = [
+        [ 0,  0,  0,  0,  0,  0,  0,  0],
+        [ 5, 10, 10, 10, 10, 10, 10,  5],
+        [-5,  0,  0,  0,  0,  0,  0, -5],
+        [-5,  0,  0,  0,  0,  0,  0, -5],
+        [-5,  0,  0,  0,  0,  0,  0, -5],
+        [-5,  0,  0,  0,  0,  0,  0, -5],
+        [-5,  0,  0,  0,  0,  0,  0, -5],
+        [ 0,  0,  0,  5,  5,  0,  0,  0]
+    ]
+    
+    QUEEN_TABLE = [
+        [-20,-10,-10, -5, -5,-10,-10,-20],
+        [-10,  0,  0,  0,  0,  0,  0,-10],
+        [-10,  0,  5,  5,  5,  5,  0,-10],
+        [ -5,  0,  5,  5,  5,  5,  0, -5],
+        [  0,  0,  5,  5,  5,  5,  0, -5],
+        [-10,  5,  5,  5,  5,  5,  0,-10],
+        [-10,  0,  5,  0,  0,  0,  0,-10],
+        [-20,-10,-10, -5, -5,-10,-10,-20]
+    ]
+    
+    KING_TABLE_MIDDLE = [
+        [-30,-40,-40,-50,-50,-40,-40,-30],
+        [-30,-40,-40,-50,-50,-40,-40,-30],
+        [-30,-40,-40,-50,-50,-40,-40,-30],
+        [-30,-40,-40,-50,-50,-40,-40,-30],
+        [-20,-30,-30,-40,-40,-30,-30,-20],
+        [-10,-20,-20,-20,-20,-20,-20,-10],
+        [ 20, 20,  0,  0,  0,  0, 20, 20],
+        [ 20, 30, 10,  0,  0, 10, 30, 20]
+    ]
+
+    KING_TABLE_ENDGAME = [
+        [-50,-40,-30,-20,-20,-30,-40,-50],
+        [-30,-20,-10,  0,  0,-10,-20,-30],
+        [-30,-10, 20, 30, 30, 20,-10,-30],
+        [-30,-10, 30, 40, 40, 30,-10,-30],
+        [-30,-10, 30, 40, 40, 30,-10,-30],
+        [-30,-10, 20, 30, 30, 20,-10,-30],
+        [-30,-30,  0,  0,  0,  0,-30,-30],
+        [-50,-30,-30,-30,-30,-30,-30,-50]
+    ]
+    
+    PST_MIDDLE = {
+        'P': PAWN_TABLE, 'N': KNIGHT_TABLE, 'B': BISHOP_TABLE,
+        'R': ROOK_TABLE, 'Q': QUEEN_TABLE, 'K': KING_TABLE_MIDDLE,
+    }
+
+    PST_ENDGAME = {
+        'P': PAWN_TABLE, 'N': KNIGHT_TABLE, 'B': BISHOP_TABLE,
+        'R': ROOK_TABLE, 'Q': QUEEN_TABLE, 'K': KING_TABLE_ENDGAME,
+    }
+
+    PIECE_BASE_VALUES = { 'P': 100, 'N': 320, 'B': 330, 'R': 500, 'Q': 900, 'K': 0 }
+
     def evaluate_board(self, game_state):
         """
-        Pure Material Evaluation. 
-        Does not look at flags to avoid search poisoning.
+        Material + Positional Evaluation using Piece-Square Tables.
+        Dynamically detects game phase and acts appropriately.
         """
-        piece_values = {
-            'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0,
-            'p': -1, 'n': -3, 'b': -3, 'r': -5, 'q': -9, 'k': 0, 
-            '.': 0
-        }
+        # Determine if we are in a safe endgame where King activity is required.
+        # General chess rule: If Queens are on the board, King safety is paramount.
+        white_queen_alive = False
+        black_queen_alive = False
+        non_pawn_material = 0
+        
+        for r in range(8):
+            for c in range(8):
+                piece = game_state.board[r][c]
+                if piece == 'Q': white_queen_alive = True
+                if piece == 'q': black_queen_alive = True
+                if piece not in ['.', 'P', 'p', 'K', 'k']:
+                    non_pawn_material += self.PIECE_BASE_VALUES[piece.upper()]
+                    
+        # Only switch to Endgame tables (which centralize the king) IF:
+        # Both queens are dead, OR one queen is dead and the other side has almost no pieces left.
+        queens_dead = not white_queen_alive and not black_queen_alive
+        is_endgame = queens_dead or (non_pawn_material < 1200)
+        
+        active_pst = self.PST_ENDGAME if is_endgame else self.PST_MIDDLE
+
         score = 0
-        for row in game_state.board:
-            for piece in row:
-                score += piece_values[piece]
-        return score
+        for r in range(8):
+            for c in range(8):
+                piece = game_state.board[r][c]
+                if piece == '.':
+                    continue
+                    
+                    
+                p_type = piece.upper()
+                base = self.PIECE_BASE_VALUES[p_type]
+                pst_bonus = active_pst[p_type][r][c] if piece.isupper() else active_pst[p_type][7 - r][c]
+                
+                eval_val = base + pst_bonus
+                
+                # --- Advanced Positional Rules ---
+                if p_type == 'P':
+                    # Passed Pawn (worth almost a minor piece in endgame)
+                    passed = True
+                    if piece.isupper():
+                        for er in range(0, r):
+                            for ec in range(max(0, c-1), min(8, c+2)):
+                                if game_state.board[er][ec] == 'p': passed = False
+                    else:
+                        for er in range(r+1, 8):
+                            for ec in range(max(0, c-1), min(8, c+2)):
+                                if game_state.board[er][ec] == 'P': passed = False
+                    if passed: eval_val += 50
+                        
+                if p_type == 'R':
+                    # Open File (no friendly pawns blocking)
+                    own_pawn = 'P' if piece.isupper() else 'p'
+                    if not any(game_state.board[tr][c] == own_pawn for tr in range(8)):
+                        eval_val += 25
+                        
+                if piece.isupper():
+                    score += eval_val
+                else:
+                    score -= eval_val
+        
+        return score / 100.0  # Convert centipawns to pawn units
+
+    def _capture_score(self, move):
+        """MVV-LVA: prioritize capturing high-value pieces with low-value attackers."""
+        if move.piece_captured == '.':
+            return 0
+        victim = self.PIECE_BASE_VALUES.get(move.piece_captured.upper(), 0)
+        attacker = self.PIECE_BASE_VALUES.get(move.piece_moved.upper(), 0)
+        return victim * 10 - attacker  # High victim, low attacker = best
+
+    def quiescence_search(self, game_state, alpha, beta, is_maximizing):
+        """
+        Solves the Horizon Effect by continuing search for captures only.
+        """
+        # Critical: Check for mate at the horizon before standing pat!
+        valid_moves = game_state.get_valid_moves()
+        if not valid_moves:
+            if game_state.is_in_check(): # Checkmate
+                return -9999 if is_maximizing else 9999
+            return 0 # Stalemate
+            
+        stand_pat = self.evaluate_board(game_state)
+        
+        if is_maximizing:
+            if stand_pat >= beta: return beta
+            if stand_pat > alpha: alpha = stand_pat
+        else:
+            if stand_pat <= alpha: return alpha
+            if stand_pat < beta: beta = stand_pat
+            
+        capture_moves = [m for m in valid_moves if m.piece_captured != '.']
+        capture_moves.sort(key=lambda m: self._capture_score(m), reverse=True)
+        
+        if is_maximizing:
+            for move in capture_moves:
+                game_state.make_move(move)
+                score = self.quiescence_search(game_state, alpha, beta, False)
+                game_state.undo_move()
+                
+                if score >= beta: return beta
+                if score > alpha: alpha = score
+            return alpha
+        else:
+            for move in capture_moves:
+                game_state.make_move(move)
+                score = self.quiescence_search(game_state, alpha, beta, True)
+                game_state.undo_move()
+                
+                if score <= alpha: return alpha
+                if score < beta: beta = score
+            return beta
 
     def fast_minimax(self, game_state, depth, alpha, beta, is_maximizing):
         if depth == 0:
-            return self.evaluate_board(game_state)
+            return self.quiescence_search(game_state, alpha, beta, is_maximizing)
             
         valid_moves = game_state.get_valid_moves()
         
@@ -65,8 +259,8 @@ class AIPlayer:
                 return -9999 if is_maximizing else 9999
             return 0 # Stalemate
             
-        # Move Ordering: Evaluate occupies/captures first
-        valid_moves.sort(key=lambda m: 1 if m.piece_captured != "." else 0, reverse=True)
+        # Move Ordering: MVV-LVA for captures, then quiet moves
+        valid_moves.sort(key=lambda m: self._capture_score(m), reverse=True)
         
         if is_maximizing:
             max_eval = -float('inf')
