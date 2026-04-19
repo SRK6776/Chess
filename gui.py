@@ -3,7 +3,7 @@ import sys
 import copy
 import threading
 from engine import GameState, Move
-from ai_player import AIPlayer
+from uci_bridge import UCIEngine
 import os
 
 # ─── Constants ─────────────────────────────────────────────
@@ -297,12 +297,9 @@ def main():
 
     game_state = GameState()
     
-    # Load AI
-    if os.path.exists("chess_model.pth"):
-        ai = AIPlayer("chess_model.pth")
-    else:
-        print("Model not trained yet! Run train_model.py first.")
-        return
+    # Load Rust engine via UCI
+    engine_path = os.path.join("chess-engine-rs", "target", "release", "chess-engine-rs")
+    ai = UCIEngine(engine_path, depth=5)
 
     player_white = True
     valid_moves = game_state.get_valid_moves()
@@ -345,6 +342,7 @@ def main():
                 if event.key == pygame.K_r:
                     # Reset
                     game_state = GameState()
+                    ai.new_game()
                     valid_moves = game_state.get_valid_moves()
                     selected_sq = None
                     last_move = None
@@ -448,6 +446,7 @@ def main():
             def ai_thread_func():
                 nonlocal ai_move_ready, ai_eval
                 best = ai.get_best_move(game_state, valid_moves)
+                ai_eval = ai.last_eval
                 ai_move_ready = best
             
             thread = threading.Thread(target=ai_thread_func, daemon=True)

@@ -1,0 +1,2 @@
+ArrayBase<ViewRepr<&f32>, Dim<[usize; 4]>>: OwnedTensorArrayData<_>
+ndarray::ArrayBase<ndarray::data_repr::OwnedRepr<T>, D>

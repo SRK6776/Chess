@@ -1,0 +1,18 @@
+[package]
+name = "chess-engine-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sarthak Kale"]
+description = "A hybrid CNN-Minimax chess engine with UCI support"
+
+[dependencies]
+# Move generation (bitboard-based)
+shakmaty = "0.27"
+
+# ONNX neural network inference
+ort = "2.0.0-rc.12"
+ndarray = "0.17"
+
+[profile.release]
+opt-level = 3
+lto = true
